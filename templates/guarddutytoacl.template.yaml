@@ -88,8 +88,10 @@ Resources:
       Environment:
         Variables:
           ACLMETATABLE: !Ref GuardDutytoACLDDBTable
-          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Ref ALBBlacklistIPSet, !Ref ALBIPSetId ]
-          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlacklistIPSet, !Ref CloudFrontIPSetId ]
+          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [1, !Split [ "|", !Ref ALBIPSetId]] ]
+          ALB_IP_SET_NAME: !If [ CreateALBWebACL, !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [0, !Split [ "|", !Ref ALBIPSetId]] ]
+          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] ]
+          CLOUDFRONT_IP_SET_NAME: !If [ CreateCloudFrontWebACL, !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [0, !Split [ "|", !Ref CloudFrontIPSetId]] ]
           SNSTOPIC: !Ref GuardDutytoACLSNSTopic
       Code:
         S3Bucket: !Sub ${ArtifactsBucket}
@@ -123,25 +125,11 @@ Resources:
           -
             Effect: Allow
             Action:
-            - waf:GetIPSet
-            - waf:UpdateIPSet
-            Resource: !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontBlacklistIPSet}', !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontIPSetId}' ]
-          -
-            Effect: Allow
-            Action:
-            - waf-regional:GetIPSet
-            - waf-regional:UpdateIPSet
-            Resource: !If [ CreateALBWebACL, !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBBlacklistIPSet}', !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBIPSetId}' ]
-          -
-            Effect: Allow
-            Action:
-            - waf:GetChangeToken
-            Resource: "*"
-          -
-            Effect: Allow
-            Action:
-            - waf-regional:GetChangeToken
-            Resource: "*"
+            - wafv2:GetIPSet
+            - wafv2:UpdateIPSet
+            Resource: 
+            - !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/{ Function: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }/{Function: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }', !Sub 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/{ Function: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }/{Function: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }${CloudFrontIPSetId}' ]
+            - !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${ALBBlockedIPSet}', !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/webacl/${ALBIPSetId}' ]  
           -
             Effect: "Allow"
             Action:
@@ -221,87 +209,129 @@ Resources:
         -
           AttributeName: "CreatedAt"
           KeyType: "RANGE"
-      ProvisionedThroughput:
-        ReadCapacityUnits: "5"
-        WriteCapacityUnits: "5"
-
-  CloudFrontBlacklistIPSet:
+      BillingMode: "PAY_PER_REQUEST"
+      
+  CloudFrontBlockedIPSet:
     Condition: CreateCloudFrontWebACL
-    Type: AWS::WAF::IPSet
+    Type: AWS::WAFv2::IPSet
     Properties:
-      Name: "GD2ACL CloudFront IPSet for blacklisted IP adresses"
-      IPSetDescriptors:
-        -
-          Type: "IPV4"
-          Value: "127.0.0.1/32"
+      Name: "GD2ACloudFrontIpSet"
+      Description: "GD2ACL CloudFront IPSet for blacklisted IP adresses"
+      IPAddressVersion: "IPV4"
+      Scope: "CLOUDFRONT"
+      Addresses:
+      - "127.0.0.1/32"
 
-  CloudFrontBlacklistIPSetRule:
+  CloudFrontBlockedIPSetRuleGroup:
     Condition: CreateCloudFrontWebACL
-    Type: AWS::WAF::Rule
+    Type: AWS::WAFv2::RuleGroup
     Properties:
-      Name: "GD2ACLCloudFrontBlacklistIPSetRule"
-      MetricName: "IPSetRule"
-      Predicates:
-        -
-          DataId:
-            Ref: "CloudFrontBlacklistIPSet"
-          Negated: false
-          Type: "IPMatch"
-
-  CloudFrontBlacklistWebACL:
-    Condition: CreateCloudFrontWebACL
-    Type: AWS::WAF::WebACL
-    Properties:
-      Name: "GD2ACL CloudFront WebACL to block blacklisted IP addresses"
-      DefaultAction:
-        Type: "ALLOW"
-      MetricName: "GD2ACLCloudFrontBlacklistWebACL"
+      Capacity: 100
+      Name: "GD2ACLCloudFrontBlockedIPSetRuleGroup"
+      Scope: "CLOUDFRONT"
+      VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: "GD2ACLCloudFrontBlockedIPSetMetrics"
       Rules:
-        -
-          Action:
-            Type: "BLOCK"
-          Priority: 1
-          RuleId:
-            Ref: "CloudFrontBlacklistIPSetRule"
+      - Name: "RuleBlockIP"
+        Priority: 1
+        Action:
+          Block: {}
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: "RuleBlockIP"
+        Statement:
+          IPSetReferenceStatement:
+            Arn: !GetAtt [ CloudFrontBlockedIPSet, Arn ]
 
-  ALBBlacklistIPSet:
-    Condition: CreateALBWebACL
-    Type: AWS::WAFRegional::IPSet
+  CloudFrontBlockedWebACL:
+    Condition: CreateCloudFrontWebACL
+    Type: AWS::WAFv2::WebACL
     Properties:
-      Name: "GD2ACL ALB IPSet for blacklisted IP adresses"
-      IPSetDescriptors:
-        -
-          Type: "IPV4"
-          Value: "127.0.0.1/32"
-
-  ALBBlacklistIPSetRule:
-    Condition: CreateALBWebACL
-    Type: AWS::WAFRegional::Rule
-    Properties:
-      Name: "GD2ACLALBBlacklistIPSetRule"
-      MetricName: "IPSetRule"
-      Predicates:
-        -
-          DataId:
-            Ref: "ALBBlacklistIPSet"
-          Negated: false
-          Type: "IPMatch"
-
-  ALBBlacklistWebACL:
-    Condition: CreateALBWebACL
-    Type: AWS::WAFRegional::WebACL
-    Properties:
-      Name: "GD2ACL ALB WebACL to block blacklisted IP addresses"
+      Name: "GD2ACLCloudFrontWebAcl"
+      Description: "GD2ACL CloudFront WebACL to block blocked IP addresses"
+      Scope: "CLOUDFRONT"
       DefaultAction:
-        Type: "ALLOW"
-      MetricName: "GD2ACLALBBlacklistWebACL"
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: CloudFrontWebACLMetric
       Rules:
-        -
-          Action:
-            Type: "BLOCK"
-          Priority: 1
-          RuleId:
-            Ref: "ALBBlacklistIPSetRule"
+      - Name: block-ip-rule
+        Priority: 0
+        Statement:
+          RuleGroupReferenceStatement:
+            Arn: !GetAtt [ CloudFrontBlockedIPSetRuleGroup, Arn ]
+        OverrideAction:
+          None: {}
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: block-ip-rule
+
+  ALBBlockedIPSet:
+    Condition: CreateALBWebACL
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: "GD2AAlbIpSet"
+      Description: "GD2ACL ALB IPSet for blocked IP adresses"
+      IPAddressVersion: "IPV4"
+      Scope: "REGIONAL"
+      Addresses:
+      - "127.0.0.1/32"
+
+  ALBBlockedIPSetRuleGroup:
+    Condition: CreateALBWebACL
+    Type: AWS::WAFv2::RuleGroup
+    Properties:
+      Capacity: 100
+      Name: "GD2ACLALBBlockedIPSetRuleGroup"
+      Scope: "REGIONAL"
+      VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: "GD2ACLAlbBlockedIPSetMetrics"
+      Rules:
+      - Name: "RuleBlockIP"
+        Priority: 1
+        Action:
+          Block: {}
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: "RuleBlockIP"
+        Statement:
+          IPSetReferenceStatement:
+            Arn: !GetAtt [ ALBBlockedIPSet, Arn ]
+
+  ALBBlockedWebACL:
+    Condition: CreateALBWebACL
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: "GD2ACLAlbWebAcl"
+      Description: "GD2ACL ALB WebACL to block blocked IP addresses"
+      Scope: "REGIONAL"
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: CloudFrontWebACLMetric
+      Rules:
+      - Name: block-ip-rule
+        Priority: 0
+        Statement:
+          RuleGroupReferenceStatement:
+            Arn: !GetAtt [ ALBBlockedIPSetRuleGroup, Arn ]
+        OverrideAction:
+          None: {}
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: block-ip-rule
 
   PruneOldEntriesLambda:
     Type: AWS::Lambda::Function
@@ -315,8 +345,8 @@ Resources:
       Environment:
         Variables:
           ACLMETATABLE: !Ref GuardDutytoACLDDBTable
-          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Ref ALBBlacklistIPSet, !Ref ALBIPSetId ]
-          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlacklistIPSet, !Ref CloudFrontIPSetId ]
+          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Ref ALBBlockedIPSet, !Ref ALBIPSetId ]
+          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlockedIPSet, !Ref CloudFrontIPSetId ]
           RETENTION: !Ref Retention
       Code:
         S3Bucket: !Sub ${ArtifactsBucket}
@@ -352,13 +382,13 @@ Resources:
             Action:
             - waf:GetIPSet
             - waf:UpdateIPSet
-            Resource: !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontBlacklistIPSet}', !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontIPSetId}' ]
+            Resource: !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontBlockedIPSet}', !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontIPSetId}' ]
           -
             Effect: Allow
             Action:
             - waf-regional:GetIPSet
             - waf-regional:UpdateIPSet
-            Resource: !If [ CreateALBWebACL, !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBBlacklistIPSet}', !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBIPSetId}' ]
+            Resource: !If [ CreateALBWebACL, !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBBlockedIPSet}', !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBIPSetId}' ]
           -
             Effect: Allow
             Action:
@@ -436,10 +466,10 @@ Outputs:
     Value: !Ref GuardDutytoACLDDBTable
   ALBIPSetId:
     Description: ALB WAF IP Set Id
-    Value: !If [ CreateALBWebACL, !Ref ALBBlacklistIPSet, !Ref ALBIPSetId ]
+    Value: !If [ CreateALBWebACL, !Ref ALBBlockedIPSet, !Ref ALBIPSetId ]
   CloudFrontIPSetId:
     Description: CloudFront WAF IP Set Id
-    Value: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlacklistIPSet, !Ref CloudFrontIPSetId ]
+    Value: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlockedIPSet, !Ref CloudFrontIPSetId ]
   Retention:
     Description: ACL Entry Time to Live in Minutes
     Value: !Ref Retention

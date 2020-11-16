@@ -36,12 +36,56 @@ API_CALL_NUM_RETRIES = 1
 ACLMETATABLE = os.environ['ACLMETATABLE']
 SNSTOPIC = os.environ['SNSTOPIC']
 CLOUDFRONT_IP_SET_ID = os.environ['CLOUDFRONT_IP_SET_ID']
+CLOUDFRONT_IP_SET_NAME = os.environ['CLOUDFRONT_IP_SET_NAME']
 ALB_IP_SET_ID = os.environ['ALB_IP_SET_ID']
+ALB_IP_SET_NAME = os.environ['ALB_IP_SET_NAME']
 
 #======================================================================================================================
 # Auxiliary Functions
 #======================================================================================================================
 
+# Update WAFv2 IP set
+def wafv2_update_ip_set(wafv2_type, update_type, ip_set_id, ip_set_name, source_ip):
+
+    if wafv2_type == 'alb':
+        scope = 'REGIONAL'
+    if wafv2_type == 'cloudfront':
+        scope = 'CLOUDFRONT'    
+    wafv2 = boto3.client('wafv2')
+    response = wafv2.get_ip_set(
+        Name=ip_set_name,
+        Scope=scope,
+        Id=ip_set_id
+    )
+    locktoken = response['LockToken']
+    addresses = response['IPSet']['Addresses']
+    if update_type == 'INSERT':
+        addresses.append(f'{source_ip}/32')
+    elif update_type == 'DELETE':
+        for address in addresses:
+            if address == f'{source_ip}/32':
+                addresses.remove(f'{source_ip}/32')
+    for attempt in range(API_CALL_NUM_RETRIES):
+        try:
+            response = wafv2.update_ip_set(
+                Name=ip_set_name,
+                Scope=scope,
+                Id=ip_set_id,
+                Addresses=[
+                    f'{source_ip}/32'
+                ],
+                LockToken=locktoken
+            )
+            logger.info("log -- waf_update_ip_set %s IP %s - IPset %s, WAF type %s successfully..." % (update_type, source_ip, ip_set_id, wafv2_type))
+        except Exception as e:
+            logger.error(e)
+            delay = math.pow(2, attempt)
+            logger.info("log -- waf_update_ip_set retrying in %d seconds..." % (delay))
+            time.sleep(delay)
+        else:
+            break
+    else:
+        logger.info("log -- waf_update_ip_set failed ALL attempts to call WAF API")
 
 # Update WAF IP set
 def waf_update_ip_set(waf_type, update_type, ip_set_id, source_ip):
@@ -204,8 +248,10 @@ def update_nacl(netacl_id, host_ip, region):
                 logger.info("log -- adding new rule %s, HostIP %s, to NACL %s." % (newruleno, host_ip, netacl_id))
                 create_netacl_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno)
                 create_ddb_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno, region=region)
-                waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
-                waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+                #waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
+                #waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+                wafv2_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, ALB_IP_SET_NAME, host_ip)
+                wafv2_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, CLOUDFRONT_IP_SET_NAME, host_ip)
                 
                 logger.info("log -- all possible NACL rule numbers, %s." % (rulerange))
                 logger.info("log -- current DDB entries, %s." % (ddbrulerange))
@@ -234,16 +280,20 @@ def update_nacl(netacl_id, host_ip, region):
                 # check if IP is also recorded in a fresh finding, don't remove IP from blacklist in that case
                 response_nonexpired = table.scan( FilterExpression=Attr('CreatedAt').gt(oldrulets) & Attr('HostIp').eq(host_ip) )
                 if len(response_nonexpired['Items']) == 0:
-                    waf_update_ip_set('alb', 'DELETE', ALB_IP_SET_ID, oldhostip)
-                    waf_update_ip_set('cloudfront', 'DELETE', CLOUDFRONT_IP_SET_ID, oldhostip)
+                    #waf_update_ip_set('alb', 'DELETE', ALB_IP_SET_ID, oldhostip)
+                    #waf_update_ip_set('cloudfront', 'DELETE', CLOUDFRONT_IP_SET_ID, oldhostip)
+                    wafv2_update_ip_set('alb', 'DELETE', ALB_IP_SET_ID, ALB_IP_SET_NAME, oldhostip)
+                    wafv2_update_ip_set('cloudfront', 'DELETE', CLOUDFRONT_IP_SET_ID, CLOUDFRONT_IP_SET_NAME, oldhostip)
                     logger.info('log -- deleting ALB and CloudFront WAF IP set entry for host, %s from CloudFront Ip set %s and ALB IP set %s.' % (oldhostip, CLOUDFRONT_IP_SET_ID, ALB_IP_SET_ID))
 
                 # Create new NACL rule, IP set entries and DDB state entry
                 logger.info("log -- adding new rule %s, HostIP %s, to NACL %s." % (newruleno, host_ip, netacl_id))
                 create_netacl_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno)
                 create_ddb_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno, region=region)
-                waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
-                waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+                #waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
+                #waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+                wafv2_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, ALB_IP_SET_NAME, host_ip)
+                wafv2_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, CLOUDFRONT_IP_SET_NAME, host_ip)
 
                 logger.info("log -- all possible NACL rule numbers, %s." % (rulerange))
                 logger.info("log -- current DDB entries, %s." % (ddbrulerange))
@@ -267,8 +317,10 @@ def update_nacl(netacl_id, host_ip, region):
             logger.info("log -- adding new rule %s, HostIP %s, to NACL %s." % (newruleno, host_ip, netacl_id))
             create_netacl_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno)
             create_ddb_rule(netacl_id=netacl_id, host_ip=host_ip, rule_no=newruleno, region=region)
-            waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
-            waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+            #waf_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, host_ip)
+            #waf_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, host_ip)
+            wafv2_update_ip_set('alb', 'INSERT', ALB_IP_SET_ID, ALB_IP_SET_NAME, host_ip)
+            wafv2_update_ip_set('cloudfront', 'INSERT', CLOUDFRONT_IP_SET_ID, CLOUDFRONT_IP_SET_NAME, host_ip)
 
             logger.info("log -- rule count for NACL %s is %s." % (netacl_id, int(rulecount) + 1))
 

@@ -128,8 +128,22 @@ Resources:
             - wafv2:GetIPSet
             - wafv2:UpdateIPSet
             Resource: 
-            - !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/{ Function: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }/{Function: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }', !Sub 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/{ Function: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }/{Function: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }${CloudFrontIPSetId}' ]
-            - !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${ALBBlockedIPSet}', !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/webacl/${ALBIPSetId}' ]  
+            - !If 
+              - CreateCloudFrontWebACL
+              - !Sub 
+                - 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/${Cfblockedipsetname}/${Cfblockedipsetid}'
+                - { Cfblockedipsetname: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]], Cfblockedipsetid: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }
+              - !Sub
+                - 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/${Cfipsetname}/${Cfipsetid}'
+                - { Cfipsetname: !Select [0, !Split [ "|", !Ref CloudFrontIPSetId]], Cfipsetid: !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] }
+            - !If 
+              - CreateALBWebACL
+              - !Sub 
+                - 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${Albblockedipsetname}/${Albblockedipsetid}'
+                - { Albblockedipsetname: !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], Albblockedipsetid: !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]] }
+              - !Sub 
+                - 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${Albipsetname}/${Albipsetid}'
+                - { Albipsetname: !Select [0, !Split [ "|", !Ref ALBIPSetId]], Albipsetid: !Select [1, !Split [ "|", !Ref ALBIPSetId]] }
           -
             Effect: "Allow"
             Action:
@@ -345,8 +359,10 @@ Resources:
       Environment:
         Variables:
           ACLMETATABLE: !Ref GuardDutytoACLDDBTable
-          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Ref ALBBlockedIPSet, !Ref ALBIPSetId ]
-          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Ref CloudFrontBlockedIPSet, !Ref CloudFrontIPSetId ]
+          ALB_IP_SET_ID: !If [ CreateALBWebACL, !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [1, !Split [ "|", !Ref ALBIPSetId]] ]
+          ALB_IP_SET_NAME: !If [ CreateALBWebACL, !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [0, !Split [ "|", !Ref ALBIPSetId]] ]
+          CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] ]
+          CLOUDFRONT_IP_SET_NAME: !If [ CreateCloudFrontWebACL, !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [0, !Split [ "|", !Ref CloudFrontIPSetId]] ]
           RETENTION: !Ref Retention
       Code:
         S3Bucket: !Sub ${ArtifactsBucket}
@@ -380,25 +396,25 @@ Resources:
           -
             Effect: Allow
             Action:
-            - waf:GetIPSet
-            - waf:UpdateIPSet
-            Resource: !If [ CreateCloudFrontWebACL, !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontBlockedIPSet}', !Sub 'arn:aws:waf::${AWS::AccountId}:ipset/${CloudFrontIPSetId}' ]
-          -
-            Effect: Allow
-            Action:
-            - waf-regional:GetIPSet
-            - waf-regional:UpdateIPSet
-            Resource: !If [ CreateALBWebACL, !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBBlockedIPSet}', !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/${ALBIPSetId}' ]
-          -
-            Effect: Allow
-            Action:
-            - waf:GetChangeToken
-            Resource: "*"
-          -
-            Effect: Allow
-            Action:
-            - waf-regional:GetChangeToken
-            Resource: "*"
+            - wafv2:GetIPSet
+            - wafv2:UpdateIPSet
+            Resource: 
+            - !If 
+              - CreateCloudFrontWebACL
+              - !Sub 
+                - 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/${Cfblockedipsetname}/${Cfblockedipsetid}'
+                - { Cfblockedipsetname: !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]], Cfblockedipsetid: !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]] }
+              - !Sub
+                - 'arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/ipset/${Cfipsetname}/${Cfipsetid}'
+                - { Cfipsetname: !Select [0, !Split [ "|", !Ref CloudFrontIPSetId]], Cfipsetid: !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] }
+            - !If 
+              - CreateALBWebACL
+              - !Sub 
+                - 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${Albblockedipsetname}/${Albblockedipsetid}'
+                - { Albblockedipsetname: !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], Albblockedipsetid: !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]] }
+              - !Sub 
+                - 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:regional/ipset/${Albipsetname}/${Albipsetid}'
+                - { Albipsetname: !Select [0, !Split [ "|", !Ref ALBIPSetId]], Albipsetid: !Select [1, !Split [ "|", !Ref ALBIPSetId]] }
           -
             Effect: "Allow"
             Action:

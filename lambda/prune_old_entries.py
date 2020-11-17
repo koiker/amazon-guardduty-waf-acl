@@ -34,12 +34,50 @@ API_CALL_NUM_RETRIES = 1
 ACLMETATABLE = os.environ['ACLMETATABLE']
 RETENTION = os.environ['RETENTION']
 CLOUDFRONT_IP_SET_ID = os.environ['CLOUDFRONT_IP_SET_ID']
+CLOUDFRONT_IP_SET_NAME = os.environ['CLOUDFRONT_IP_SET_NAME']
 ALB_IP_SET_ID = os.environ['ALB_IP_SET_ID']
+ALB_IP_SET_NAME = os.environ['ALB_IP_SET_NAME']
 
 #======================================================================================================================
 # Auxiliary Functions
 #======================================================================================================================
 
+
+def wafv2_update_ip_set(wafv2_type, ip_set_id, ip_set_name, source_ip):
+    if wafv2_type == 'alb':
+        scope = 'REGIONAL'
+    if wafv2_type == 'cloudfront':
+        scope = 'CLOUDFRONT'    
+    wafv2 = boto3.client('wafv2')
+    response = wafv2.get_ip_set(
+        Name=ip_set_name,
+        Scope=scope,
+        Id=ip_set_id
+    )
+    locktoken = response['LockToken']
+    addresses = response['IPSet']['Addresses']
+    if f'{source_ip}/32' in addresses:
+        addresses.remove(f'{source_ip}/32')
+    for attempt in range(API_CALL_NUM_RETRIES):
+        try:
+            response = wafv2.update_ip_set(
+                Name=ip_set_name,
+                Scope=scope,
+                Id=ip_set_id,
+                Addresses=addresses,
+                LockToken=locktoken
+            )
+            logger.info(response)
+            logger.info('successfully deleted ip %s' %source_ip)
+        except Exception as e:
+            logger.error(e)
+            delay = math.pow(2, attempt)
+            logger.info("log -- waf_update_ip_set retrying in %d seconds..." % (delay))
+            time.sleep(delay)
+        else:
+            break
+    else:
+        logger.info("log -- waf_update_ip_set failed ALL attempts to call WAF API")
 
 def waf_update_ip_set(waf_type, ip_set_id, source_ip):
 
@@ -155,9 +193,9 @@ def lambda_handler(event, context):
                     if len(response_nonexpired['Items']) == 0:
                         # no fresher entry found for that IP
                         logger.info('log -- deleting ALB WAF ip entry')
-                        waf_update_ip_set('alb', ALB_IP_SET_ID, HostIp)
+                        wafv2_update_ip_set('alb', ALB_IP_SET_ID, ALB_IP_SET_NAME, HostIp)
                         logger.info('log -- deleting CloudFront WAF ip entry')
-                        waf_update_ip_set('cloudfront', CLOUDFRONT_IP_SET_ID, HostIp)
+                        wafv2_update_ip_set('cloudfront', CLOUDFRONT_IP_SET_ID, CLOUDFRONT_IP_SET_NAME, HostIp)
 
                     logger.info('log -- deleting dynamodb item')
                     delete_ddb_rule(item['NetACLId'], item['CreatedAt'])

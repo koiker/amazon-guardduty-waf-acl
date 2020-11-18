@@ -84,7 +84,7 @@ Resources:
       Timeout: 300
       ReservedConcurrentExecutions: 1
       Role: !GetAtt GuardDutytoACLRole.Arn
-      Runtime : "python3.6"
+      Runtime : "python3.8"
       Environment:
         Variables:
           ACLMETATABLE: !Ref GuardDutytoACLDDBTable
@@ -355,7 +355,7 @@ Resources:
       MemorySize: 1024
       Timeout: 300
       Role: !GetAtt PruneOldEntriesRole.Arn
-      Runtime : "python3.6"
+      Runtime : "python3.8"
       Environment:
         Variables:
           ACLMETATABLE: !Ref GuardDutytoACLDDBTable

@@ -29,16 +29,17 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
-#======================================================================================================================
+# ======================================================================================================================
 # Variables
-#======================================================================================================================
+# ======================================================================================================================
 
 ACLMETATABLE = "GuardDutytoACL-GuardDutytoACLDDBTable-ID"
 AWS_REGION = "us-east-1"
 
-#======================================================================================================================
+
+# ======================================================================================================================
 # Auxiliary Functions
-#======================================================================================================================
+# ======================================================================================================================
 
 # used to color text
 class bcolors:
@@ -47,16 +48,17 @@ class bcolors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
 
+
 # validate command line
 if len(sys.argv) != 2:
-	print('Usage: gd2acl-sync-check.py <target NACL Id>');
-	exit(1);
+    print('Usage: gd2acl-sync-check.py <target NACL Id>');
+    exit(1);
 
 # set target vpc nacl
 targnacl = sys.argv[1];
 
-def get_netacl_id(subnet_id):
 
+def get_netacl_id(subnet_id):
     try:
         ec2 = boto3.client('ec2')
         response = ec2.describe_network_acls(
@@ -69,7 +71,6 @@ def get_netacl_id(subnet_id):
                 }
             ]
         )
-
 
         netacls = response['NetworkAcls'][0]['Associations']
 
@@ -87,14 +88,14 @@ def get_nacl_rules(netacl_id):
     response = ec2.describe_network_acls(
         NetworkAclIds=[
             netacl_id,
-            ]
+        ]
     )
 
     naclrules = []
 
     for i in response['NetworkAcls'][0]['Entries']:
         naclrules.append(i['RuleNumber'])
-        
+
     naclrulesf = list(filter(lambda x: 71 <= x <= 80, naclrules))
 
     return naclrulesf
@@ -107,7 +108,7 @@ def get_nacl_meta(netacl_id):
     response = ec2.describe_network_acls(
         NetworkAclIds=[
             netacl_id,
-            ]
+        ]
     )
 
     # Get entries in DynamoDB table
@@ -118,7 +119,7 @@ def get_nacl_meta(netacl_id):
     naclentries = []
 
     for i in netacl:
-            entries.append(i)
+        entries.append(i)
 
     return naclentries
 
@@ -147,7 +148,7 @@ def check_nacl(netacl_id, region):
 
         for i in naclentries:
             ddbrulerange.append(int(i['RuleNo']))
-        
+
         ddbrulerange.sort()
         naclrulerange.sort()
 
@@ -169,9 +170,10 @@ def check_nacl(netacl_id, region):
         else:
             return False
 
-#======================================================================================================================
+
+# ======================================================================================================================
 # Run main function
-#======================================================================================================================
+# ======================================================================================================================
 
 try:
     check_nacl(targnacl, AWS_REGION)

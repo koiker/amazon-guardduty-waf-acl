@@ -14,13 +14,14 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import boto3
-import math
-import time
 import json
 import logging
+import math
 import os
-from boto3.dynamodb.conditions import Key, Attr
+import time
+
+import boto3
+from boto3.dynamodb.conditions import Attr
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

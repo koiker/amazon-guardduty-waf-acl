@@ -31,8 +31,8 @@ logger.setLevel(logging.INFO)
 # ======================================================================================================================
 
 API_CALL_NUM_RETRIES = 1
-ACL_METATABLE = os.environ['ACLMETATABLE']
-SNS_TOPIC = os.environ['SNSTOPIC']
+ACL_METATABLE = os.environ['ACL_METATABLE']
+SNS_TOPIC = os.environ['SNS_TOPIC']
 CLOUDFRONT_IP_SET_ID = os.environ['CLOUDFRONT_IP_SET_ID']
 CLOUDFRONT_IP_SET_NAME = os.environ['CLOUDFRONT_IP_SET_NAME']
 ALB_IP_SET_ID = os.environ['ALB_IP_SET_ID']

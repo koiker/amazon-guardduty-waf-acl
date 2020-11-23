@@ -87,12 +87,12 @@ Resources:
       Runtime : "python3.8"
       Environment:
         Variables:
-          ACLMETATABLE: !Ref GuardDutytoACLDDBTable
+          ACL_METATABLE: !Ref GuardDutytoACLDDBTable
           ALB_IP_SET_ID: !If [ CreateALBWebACL, !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [1, !Split [ "|", !Ref ALBIPSetId]] ]
           ALB_IP_SET_NAME: !If [ CreateALBWebACL, !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [0, !Split [ "|", !Ref ALBIPSetId]] ]
           CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] ]
           CLOUDFRONT_IP_SET_NAME: !If [ CreateCloudFrontWebACL, !Select [0, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [0, !Split [ "|", !Ref CloudFrontIPSetId]] ]
-          SNSTOPIC: !Ref GuardDutytoACLSNSTopic
+          SNS_TOPIC: !Ref GuardDutytoACLSNSTopic
       Code:
         S3Bucket: !Sub ${ArtifactsBucket}
         S3Key: !Sub ${ArtifactsPrefix}guardduty_to_acl_lambda.zip
@@ -358,7 +358,7 @@ Resources:
       Runtime : "python3.8"
       Environment:
         Variables:
-          ACLMETATABLE: !Ref GuardDutytoACLDDBTable
+          ACL_METATABLE: !Ref GuardDutytoACLDDBTable
           ALB_IP_SET_ID: !If [ CreateALBWebACL, !Select [1, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [1, !Split [ "|", !Ref ALBIPSetId]] ]
           ALB_IP_SET_NAME: !If [ CreateALBWebACL, !Select [0, !Split [ "|", !Ref ALBBlockedIPSet]], !Select [0, !Split [ "|", !Ref ALBIPSetId]] ]
           CLOUDFRONT_IP_SET_ID: !If [ CreateCloudFrontWebACL, !Select [1, !Split [ "|", !Ref CloudFrontBlockedIPSet]], !Select [1, !Split [ "|", !Ref CloudFrontIPSetId]] ]
